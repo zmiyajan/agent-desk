@@ -1,0 +1,90 @@
+# Agent Desk: a computer for an AI agent, with a web page to watch and drive it.
+# One command:  cp .env.example .env  (set DESK_PASSWORD)  &&  docker compose up -d --build
+name: agent-desk
+
+services:
+  desktop:
+    # The agent's computer: Xfce desktop on a virtual screen, Chromium, a shell, and the shared /workspace.
+    build:
+      context: .
+      dockerfile: desktop/Dockerfile
+    restart: unless-stopped
+    hostname: desk
+    environment:
+      - DESK_GEOMETRY=${DESK_GEOMETRY:-1600x900}
+      - DESK_BROWSER_AUTOSTART=${DESK_BROWSER_AUTOSTART:-1}
+      - TZ=${TZ:-UTC}
+    volumes:
+      - workspace:/workspace
+      - home:/home/agent
+    shm_size: 512m
+    mem_limit: ${DESK_MEMORY:-2g}
+    networks: [desk]
+    # No ports are published. The screen (6080), terminal (7681) and browser automation (9223) are reachable
+    # only by the services and agent containers attached to the `desk` network.
+
+  files:
+    # File API for the Filesystem tab (File Browser). Its own UI is not exposed.
+    image: filebrowser/filebrowser:v2.32.0
+    restart: unless-stopped
+    user: "1000:1000"
+    command: ["--noauth", "--baseurl", "/files", "--root", "/srv", "--database", "/db/filebrowser.db", "--address", "0.0.0.0", "--port", "8080"]
+    healthcheck:
+      disable: true
+    volumes:
+      - workspace:/srv
+    tmpfs:
+      - /db:uid=1000,gid=1000,mode=0700   # only holds File Browser's settings; rebuilt on start
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    networks: [desk]
+    depends_on: [desktop]   # the desktop creates /workspace with the right owner first
+
+  stats:
+    # Read-only metrics of the Docker host for the Metrics and Details tabs.
+    build: ./stats
+    restart: unless-stopped
+    environment:
+      - PROC=/host/proc
+      - DISK_PATH=/workspace
+    volumes:
+      - /proc:/host/proc:ro
+      - workspace:/workspace:ro
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 64m
+    networks: [desk]
+
+  auth:
+    # Password sign-in. Every request to the page goes through it (Caddy forward_auth).
+    build: ./auth
+    restart: unless-stopped
+    environment:
+      - DESK_PASSWORD=${DESK_PASSWORD:?Set DESK_PASSWORD in .env (at least 12 characters). The page gives a shell on the desktop.}
+      - DESK_SECRET=${DESK_SECRET:-}
+      - DESK_NAME=${DESK_NAME:-Agent Desk}
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 64m
+    networks: [desk]
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "${DESK_BIND:-127.0.0.1}:${DESK_PORT:-8080}:8080"   # loopback by default; see docs/EXPOSE.md before changing
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./web:/srv/web:ro
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 128m
+    networks: [desk]
+    depends_on: [desktop, files, stats, auth]
+
+volumes:
+  workspace:   # shared with your agent: files it reads and writes
+  home:        # the desktop user's home (browser profile, desktop settings)
+
+networks:
+  desk:
+    name: agent-desk

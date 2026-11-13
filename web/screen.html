@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+<head>
+<script>if (top === self) location.replace("/#computer");   /* old direct link: the screen now lives in the workspace page */</script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Agent Desk">
+<meta name="theme-color" content="#0b0d10">
+<title>Agent screen</title>
+<style>
+  :root { --bg:#0b0d10; --bar:#11141a; --line:#1e232c; --text:#e7eaf0; --muted:#8b93a3; --icon:#c3c9d4;
+          --ok:#34d399; --warn:#fbbf24; --bad:#f87171; --accent:#60a5fa; --barH:calc(50px + env(safe-area-inset-top)); }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; -webkit-user-select:none; user-select:none; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--text); overscroll-behavior:none; overflow:hidden; touch-action:none;
+    font:15px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Tahoma,sans-serif; }
+  #bar { position:fixed; inset:0 0 auto 0; height:var(--barH); padding:env(safe-area-inset-top) 10px 0; display:flex; align-items:center; gap:6px;
+    background:var(--bar); border-bottom:1px solid var(--line); z-index:5; }
+  #brand { display:flex; align-items:center; gap:8px; font-weight:600; white-space:nowrap; }
+  #dot { width:9px; height:9px; border-radius:50%; background:var(--warn); box-shadow:0 0 0 3px #fbbf2422; }
+  #dot.ok { background:var(--ok); box-shadow:0 0 0 3px #34d39922; }  #dot.bad { background:var(--bad); box-shadow:0 0 0 3px #f8717122; }
+  #status { color:var(--muted); font-size:12px; font-weight:400; }
+  #zoomTag { color:var(--muted); font-size:12px; font-weight:500; display:none; }
+  #spacer { flex:1; }
+  .btn { height:36px; min-width:36px; padding:0 9px; border:1px solid var(--line); border-radius:10px; background:#161a21; color:var(--text);
+    font:inherit; font-size:14px; display:inline-flex; align-items:center; justify-content:center; gap:6px; cursor:pointer; }
+  .btn:active { transform:scale(.96); background:#1b2029; }
+  .btn.on { border-color:var(--accent); } .btn.on .ic, .btn.on .lbl { color:var(--accent); }
+  .ic { width:18px; height:18px; color:var(--icon); flex:none; }
+  .btn .lbl { display:none; font-size:13px; color:var(--icon); }
+  @media (min-width:820px) { #bar .btn .lbl { display:inline; } }
+  #viewport { position:fixed; inset:var(--barH) 0 0 0; overflow:hidden; background:var(--bg); }
+  #screen { position:absolute; inset:0; transform-origin:0 0; will-change:transform; }
+  #pad { position:fixed; inset:var(--barH) 0 0 0; display:none; z-index:3; touch-action:none; }
+  #cursor { position:fixed; width:22px; height:22px; z-index:4; pointer-events:none; display:none; margin:-2px 0 0 -2px;
+    filter:drop-shadow(0 1px 2px #000a); transition:transform .08s; }
+  #cursor.down { transform:scale(.85); }
+  #empty { position:fixed; inset:var(--barH) 0 0 0; display:none; align-items:center; justify-content:center; flex-direction:column; gap:10px;
+    color:var(--muted); text-align:center; padding:24px; z-index:2; }
+  #empty b { color:var(--text); font-size:17px; }
+  .sheet { position:fixed; inset:auto 0 0 0; background:var(--bar); border-top:1px solid var(--line); padding:12px 12px calc(12px + env(safe-area-inset-bottom));
+    transform:translateY(110%); transition:transform .2s ease; z-index:6; display:flex; flex-direction:column; gap:10px; }
+  .sheet.open { transform:none; }
+  .sheet h4 { margin:0; font-size:13px; font-weight:600; color:var(--muted); }
+  .sheet textarea { width:100%; min-height:60px; max-height:30vh; resize:vertical; border-radius:10px; border:1px solid var(--line); background:#0e1116;
+    color:var(--text); font:16px/1.4 inherit; padding:10px; -webkit-user-select:text; user-select:text; }
+  .row { display:flex; gap:8px; flex-wrap:wrap; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(64px,1fr)); gap:8px; direction:ltr; }
+  .grid .btn { font-size:13px; height:40px; }
+  .primary { background:var(--accent)!important; border-color:var(--accent)!important; color:#06121f!important; font-weight:600; }
+  #toast { position:fixed; left:50%; bottom:calc(22px + env(safe-area-inset-bottom)); transform:translateX(-50%); background:#1b2029; border:1px solid var(--line);
+    padding:8px 14px; border-radius:10px; font-size:14px; opacity:0; transition:opacity .2s; z-index:7; pointer-events:none; white-space:nowrap; }
+  #toast.show { opacity:1; }
+  /* live keyboard: off-screen but focusable so the phone keyboard opens and types straight into the agent */
+  #kb { position:fixed; left:-1000px; bottom:0; width:10px; height:10px; opacity:0; font-size:16px; }
+  #ripple { position:fixed; width:34px; height:34px; margin:-17px 0 0 -17px; border-radius:50%; border:2px solid var(--accent);
+    pointer-events:none; z-index:4; opacity:0; transform:scale(.4); }
+  #ripple.go { animation:rip .35s ease-out; }
+  @keyframes rip { from { opacity:.9; transform:scale(.4); } to { opacity:0; transform:scale(1.4); } }
+  #bType.on { border-color:var(--accent); }
+  /* embedded in the workspace page on a mouse device: the outer page owns the chrome */
+  html.embed { --barH:0px; --bg:#000; } html.embed #bar { display:none; }
+  /* watching (the agent has control): keep the normal mouse pointer visible over the screen */
+  html.watch #screen, html.watch #screen canvas { cursor:default !important; }
+</style>
+<script>if (new URLSearchParams(location.search).has("embed") && !matchMedia("(pointer: coarse)").matches) document.documentElement.classList.add("embed");</script>
+</head>
+<body>
+  <div id="bar">
+    <div id="brand"><span id="dot"></span>Screen <span id="status">Connecting…</span> <span id="zoomTag"></span></div>
+    <div id="spacer"></div>
+    <button class="btn" id="bMode" title="Touch / mouse"></button>
+    <button class="btn" id="bKeys" title="Keys"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/></svg><span class="lbl">Keys</span></button>
+    <button class="btn" id="bType" title="Type"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 8h.01"/><path d="M12 12h.01"/><path d="M14 8h.01"/><path d="M16 12h.01"/><path d="M18 8h.01"/><path d="M6 8h.01"/><path d="M7 16h10"/><path d="M8 12h.01"/><rect width="20" height="16" x="2" y="4" rx="2"/></svg><span class="lbl">Type</span></button>
+    <button class="btn" id="bView" title="Watch only"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2.06 12.35a1 1 0 0 1 0-.7 10.75 10.75 0 0 1 19.88 0 1 1 0 0 1 0 .7 10.75 10.75 0 0 1-19.88 0"/><circle cx="12" cy="12" r="3"/></svg><span class="lbl">Watch</span></button>
+    <button class="btn" id="bFull" title="Full screen"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg></button>
+    <button class="btn" id="bRe" title="Reconnect"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg></button>
+  </div>
+
+  <div id="viewport"><div id="screen"></div></div>
+  <div id="pad"></div>
+  <input id="kb" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="send" aria-label="Agent keyboard">
+  <div id="ripple"></div>
+  <svg id="cursor" viewBox="0 0 24 24"><path d="M3 2l7.5 19 2.6-7.9L21 10.5z" fill="#fff" stroke="#000" stroke-width="1.4" stroke-linejoin="round"/></svg>
+  <div id="empty"><b>The desktop is starting…</b><span>This page connects by itself in a moment. If it takes long, press Reconnect.</span></div>
+
+  <div class="sheet" id="typeSheet">
+    <textarea id="txt" placeholder="Type here (a verification code, for example). It is typed into the field you tapped on the agent’s screen"></textarea>
+    <div class="row">
+      <button class="btn primary" id="sSend">Type</button>
+      <button class="btn" data-key="Return">Enter</button>
+      <button class="btn" data-key="BackSpace">⌫</button>
+      <button class="btn sClose">Close</button>
+    </div>
+  </div>
+
+  <div class="sheet" id="keySheet">
+    <h4>Keys</h4>
+    <div class="grid">
+      <button class="btn" data-key="Escape">Esc</button><button class="btn" data-key="Tab">Tab</button>
+      <button class="btn" data-key="Return">Enter</button><button class="btn" data-key="BackSpace">⌫</button>
+      <button class="btn" data-key="Left">←</button><button class="btn" data-key="Up">↑</button>
+      <button class="btn" data-key="Down">↓</button><button class="btn" data-key="Right">→</button>
+      <button class="btn" data-key="Page_Up">PgUp</button><button class="btn" data-key="Page_Down">PgDn</button>
+      <button class="btn" data-key="Home">Home</button><button class="btn" data-key="End">End</button>
+    </div>
+    <h4>Shortcuts</h4>
+    <div class="grid">
+      <button class="btn" data-ctrl="a">Ctrl+A</button><button class="btn" data-ctrl="c">Ctrl+C</button>
+      <button class="btn" data-ctrl="v">Ctrl+V</button><button class="btn" data-ctrl="z">Ctrl+Z</button>
+      <button class="btn" data-ctrl="l">Address bar</button><button class="btn" data-key="F5">Reload</button>
+      <button class="btn" data-alt="Left">Back</button><button class="btn" data-ctrl="f">Find</button>
+    </div>
+    <div class="row"><button class="btn" id="bLong">Paste / long text</button></div>
+    <h4>Clipboard</h4>
+    <div class="row">
+      <button class="btn" id="cTo">From my phone → to the agent</button>
+      <button class="btn" id="cFrom">From the agent → to my phone</button>
+      <button class="btn sClose">Close</button>
+    </div>
+  </div>
+  <div id="toast"></div>
+
+<script type="module">
+import RFB from './core/rfb.js';
+import KeyTable from './core/input/keysym.js';
+import keysyms from './core/input/keysymdef.js';
+
+const $ = (id) => document.getElementById(id);
+const ICON = (p) => `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+const ICON_TOUCH = ICON('<path d="M22 14a8 8 0 0 1-8 8"/><path d="M18 11v-1a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V9a2 2 0 0 0-2-2a2 2 0 0 0-2 2v1"/><path d="M10 9.5V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v10"/><path d="M18 11a2 2 0 1 1 4 0v3a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/>');
+const ICON_MOUSE = ICON('<rect x="5" y="2" width="14" height="20" rx="7"/><path d="M12 6v4"/>');
+const wsUrl = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/screen/websockify`;
+const isTouch = matchMedia('(pointer: coarse)').matches;
+let rfb = null, retry = 0, timer = null, remoteClip = '';
+const EMBED = document.documentElement.classList.contains('embed');
+/* Embedded on a mouse device: the remote desktop follows the size of its window (no letterbox). Below a usable size it scales instead. */
+function fitSession() { if (!EMBED || !rfb) return; const r = $('viewport').getBoundingClientRect(); const want = false;   /* fixed-size desktop scaled into its card; set true to make the remote screen follow the window */ if (rfb.resizeSession !== want) rfb.resizeSession = want; }
+
+/* ---------- connection ---------- */
+function toast(msg) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 1900); }
+function setStatus(kind, text) { $('dot').className = kind; $('status').textContent = text; }
+function connect() {
+  clearTimeout(timer);
+  if (rfb) { try { rfb.disconnect(); } catch (_) {} rfb = null; }
+  setStatus('', 'Connecting…');
+  rfb = new RFB($('screen'), wsUrl, { wsProtocols: ['binary'] });
+  Object.assign(rfb, { scaleViewport: true, resizeSession: false, background: document.documentElement.classList.contains('embed') ? '#000' : '#0b0d10', qualityLevel: 6, compressionLevel: 2, focusOnClick: true });
+  rfb.viewOnly = viewOnly;
+  rfb.addEventListener('connect', () => { retry = 0; $('empty').style.display = 'none'; setStatus('ok', 'Connected'); resetZoom(); applyMode(); fitSession();
+    if (isTouch && !connect.hinted) { connect.hinted = true; toast(mode === 'mouse' ? 'Move your finger like a trackpad · tap = click · two fingers = scroll' : 'Tap the spot directly'); } });
+  rfb.addEventListener('disconnect', () => { setStatus('bad', 'Disconnected'); $('empty').style.display = 'flex';
+    retry = Math.min(retry + 1, 6); timer = setTimeout(connect, 1500 * retry); });
+  rfb.addEventListener('clipboard', (e) => { remoteClip = e.detail.text || ''; });
+}
+const live = () => rfb && rfb._rfbConnectionState === 'connected';
+
+/* ---------- zoom & pan (CSS transform on top of noVNC's fit-to-screen scaling) ---------- */
+let z = 1, px = 0, py = 0;
+function vp() { return $('viewport').getBoundingClientRect(); }
+function applyZoom() {
+  const r = vp();
+  z = Math.min(Math.max(z, 1), 4);
+  px = Math.min(0, Math.max(r.width * (1 - z), px)); py = Math.min(0, Math.max(r.height * (1 - z), py));
+  $('screen').style.transform = `translate(${px}px,${py}px) scale(${z})`;
+  $('zoomTag').style.display = z > 1.02 ? 'inline' : 'none'; $('zoomTag').textContent = `${Math.round(z * 100)}%`;
+  drawCursor();
+}
+function zoomAt(cx, cy, nz) { const r = vp(); const lx = cx - r.left, ly = cy - r.top; px = lx - (lx - px) * nz / z; py = ly - (ly - py) * nz / z; z = nz; applyZoom(); }
+function resetZoom() { z = 1; px = py = 0; applyZoom(); }
+addEventListener('resize', () => setTimeout(() => { applyZoom(); applyMode(); fitSession(); }, 60));
+
+/* ---------- geometry: page <-> remote framebuffer (works through the zoom transform) ---------- */
+function canvasRect() { const c = $('screen').querySelector('canvas'); return c ? c.getBoundingClientRect() : null; }
+function fb() { return { w: rfb?._fbWidth || 1440, h: rfb?._fbHeight || 900 }; }
+function toFb(x, y) { const r = canvasRect(), f = fb(); if (!r) return { x: 0, y: 0 };
+  return { x: Math.round(Math.min(f.w - 1, Math.max(0, (x - r.left) * f.w / r.width))), y: Math.round(Math.min(f.h - 1, Math.max(0, (y - r.top) * f.h / r.height))) }; }
+function toPage(fx, fy) { const r = canvasRect(), f = fb(); if (!r) return { x: 0, y: 0 }; return { x: r.left + fx * r.width / f.w, y: r.top + fy * r.height / f.h }; }
+// x/y are already FRAMEBUFFER pixels (toFb / cur). rfb._sendMouse would rescale them a second time via
+// display.absX (x / scale), which on a phone (scale ~0.27) threw every tap off-screen. Send the raw RFB message.
+function mouse(x, y, mask) {
+  if (!live() || viewOnly) return;
+  const f = fb();
+  RFB.messages.pointerEvent(rfb._sock, Math.max(0, Math.min(f.w - 1, Math.round(x))), Math.max(0, Math.min(f.h - 1, Math.round(y))), mask);
+}
+function ripple(fx, fy) { const p = toPage(fx, fy), r = $('ripple'); r.style.left = p.x + 'px'; r.style.top = p.y + 'px';
+  r.classList.remove('go'); void r.offsetWidth; r.classList.add('go'); }
+function clickAt(x, y, btn) { mouse(x, y, 0); mouse(x, y, btn); setTimeout(() => mouse(x, y, 0), 40); ripple(x, y); }
+function wheelAt(x, y, dir) { const m = dir < 0 ? 8 : 16; mouse(x, y, m); mouse(x, y, 0); }
+
+/* ---------- modes ---------- */
+// Default = trackpad ("mouse"), like Chrome Remote Desktop / Microsoft Remote Desktop on phones.
+let mode = (() => { try { return localStorage.getItem('desk.mode2') || 'mouse'; } catch (_) { return 'mouse'; } })();
+let viewOnly = false;
+const cur = { x: 720, y: 450 };
+function drawCursor() { if (mode !== 'mouse' || !isTouch) return; const p = toPage(cur.x, cur.y); $('cursor').style.left = p.x + 'px'; $('cursor').style.top = p.y + 'px'; }
+function applyMode() {
+  $('pad').style.display = isTouch ? 'block' : 'none';                 // on phones we own all gestures; desktops use native mouse
+  $('cursor').style.display = isTouch && mode === 'mouse' ? 'block' : 'none';
+  $('bMode').innerHTML = mode === 'mouse' ? ICON_MOUSE + '<span class="lbl">Trackpad</span>' : ICON_TOUCH + '<span class="lbl">Touch</span>';
+  $('bMode').classList.toggle('on', mode === 'mouse');
+  drawCursor();
+}
+$('bMode').onclick = () => { mode = mode === 'mouse' ? 'touch' : 'mouse'; try { localStorage.setItem('desk.mode2', mode); } catch (_) {}
+  applyMode(); toast(mode === 'mouse' ? 'Trackpad: move your finger · tap = click · two fingers = scroll' : 'Touch: tap the spot directly · long press = right click'); };
+$('bView').onclick = () => { viewOnly = !viewOnly; if (rfb) rfb.viewOnly = viewOnly; $('bView').classList.toggle('on', viewOnly); toast(viewOnly ? 'Watch only: your touches do not reach the screen' : 'Control is back'); };
+
+/* ---------- gestures ----------
+   Trackpad (default on phones, like Chrome Remote Desktop): one finger moves the cursor (with acceleration),
+   tap = left click, two-finger tap = right click, two-finger drag = scroll, pinch = zoom (view follows the cursor),
+   double-tap then drag (or long-press then drag) = hold the button and drag/select.
+   Touch: tap exactly where you want, long-press = right click, one finger drag = scroll. */
+const pad = $('pad');
+let t0 = 0, tLast = 0, moved = 0, maxF = 0, last = null, pinch = null, longT = null, dragging = false, scrollAcc = 0, longFired = false;
+let lastTap = { t: 0, x: 0, y: 0 };
+const dist = (a, b) => Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+const mid = (a, b) => ({ x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 });
+function followCursor() {                       // zoomed in: keep the cursor inside the visible area
+  if (z <= 1.02) return; const p = toPage(cur.x, cur.y), r = vp(), m = 60;
+  let dx = 0, dy = 0;
+  if (p.x < r.left + m) dx = r.left + m - p.x; else if (p.x > r.right - m) dx = r.right - m - p.x;
+  if (p.y < r.top + m) dy = r.top + m - p.y; else if (p.y > r.bottom - m) dy = r.bottom - m - p.y;
+  if (dx || dy) { px += dx; py += dy; applyZoom(); }
+}
+function startDrag() { dragging = true; navigator.vibrate?.(15); mouse(cur.x, cur.y, 1); $('cursor').classList.add('down'); }
+pad.addEventListener('touchstart', (e) => {
+  e.preventDefault(); const T = e.touches;
+  if (T.length === 1) {
+    const now = performance.now(); t0 = tLast = now; moved = 0; maxF = 1; scrollAcc = 0; longFired = false;
+    last = { x: T[0].clientX, y: T[0].clientY };
+    // trackpad: second touch right after a tap = drag (double-tap-and-drag)
+    if (mode === 'mouse' && now - lastTap.t < 280 && Math.hypot(last.x - lastTap.x, last.y - lastTap.y) < 40) { startDrag(); longFired = true; }
+    clearTimeout(longT);
+    longT = setTimeout(() => { if (moved > 10 || dragging) return; longFired = true;
+      if (mode === 'mouse') startDrag();
+      else { navigator.vibrate?.(15); const p = toFb(last.x, last.y); clickAt(p.x, p.y, 4); } }, 480);
+  }
+  if (T.length === 2) { clearTimeout(longT); maxF = 2; pinch = { d: dist(T[0], T[1]), m: mid(T[0], T[1]), z }; }
+  if (T.length >= 3) maxF = 3;
+}, { passive: false });
+pad.addEventListener('touchmove', (e) => {
+  e.preventDefault(); const T = e.touches;
+  if (T.length >= 2 && pinch) {
+    const m = mid(T[0], T[1]), d = dist(T[0], T[1]);
+    const nz = pinch.z * d / pinch.d;
+    if (Math.abs(nz - z) > 0.01) zoomAt(m.x, m.y, nz);
+    const dx = m.x - pinch.m.x, dy = m.y - pinch.m.y; pinch.m = m; moved += Math.abs(dx) + Math.abs(dy);
+    if (Math.abs(d - pinch.d) > 30) return;                                    // pinching: zoom only
+    scrollAcc += dy; while (Math.abs(scrollAcc) > 18) {                        // two fingers: scroll the page
+      const p = mode === 'mouse' ? cur : toFb(m.x, m.y);
+      wheelAt(p.x, p.y, -Math.sign(scrollAcc)); scrollAcc -= 18 * Math.sign(scrollAcc); }
+    return;
+  }
+  const t = T[0]; const now = performance.now(), dt = Math.max(1, now - tLast); tLast = now;
+  const dx = t.clientX - last.x, dy = t.clientY - last.y; last = { x: t.clientX, y: t.clientY }; moved += Math.abs(dx) + Math.abs(dy);
+  if (mode === 'mouse') {
+    const r = canvasRect(), f = fb(); if (!r) return;
+    const speed = Math.hypot(dx, dy) / dt;                                       // px per ms
+    const accel = Math.min(3.2, Math.max(0.9, 0.9 + speed * 1.6));             // slow = precise, fast = far
+    const k = accel * f.w / r.width / Math.max(1, z);
+    cur.x = Math.min(f.w - 1, Math.max(0, cur.x + dx * k)); cur.y = Math.min(f.h - 1, Math.max(0, cur.y + dy * k));
+    mouse(cur.x, cur.y, dragging ? 1 : 0); drawCursor(); followCursor();
+  } else if (z > 1.02) { px += dx; py += dy; applyZoom(); }                     // touch + zoomed: one finger pans
+  else if (moved > 10) { scrollAcc += dy; while (Math.abs(scrollAcc) > 18) { const p = toFb(t.clientX, t.clientY);
+      wheelAt(p.x, p.y, -Math.sign(scrollAcc)); scrollAcc -= 18 * Math.sign(scrollAcc); } }
+}, { passive: false });
+pad.addEventListener('touchend', (e) => {
+  e.preventDefault(); clearTimeout(longT);
+  if (e.touches.length > 0) return;
+  pinch = null;
+  const quick = performance.now() - t0 < 300 && moved < 12;
+  if (dragging) { dragging = false; mouse(cur.x, cur.y, 0); $('cursor').classList.remove('down'); return; }
+  if (longFired) return;
+  if (quick && maxF >= 2) { const p = mode === 'mouse' ? cur : toFb(last.x, last.y); clickAt(p.x, p.y, 4); return; }   // two-finger tap = right click
+  if (quick) {
+    const p = mode === 'mouse' ? { x: cur.x, y: cur.y } : toFb(last.x, last.y);
+    if (mode === 'touch') { cur.x = p.x; cur.y = p.y; }
+    clickAt(p.x, p.y, 1); lastTap = { t: performance.now(), x: last.x, y: last.y };
+    if (mode === 'mouse') { $('cursor').classList.add('down'); setTimeout(() => $('cursor').classList.remove('down'), 120); }
+  }
+}, { passive: false });
+pad.addEventListener('dblclick', (e) => e.preventDefault());
+
+/* ---------- keys, typing, clipboard ---------- */
+const KS = { Return: KeyTable.XK_Return, BackSpace: KeyTable.XK_BackSpace, Tab: KeyTable.XK_Tab, Escape: KeyTable.XK_Escape,
+  Left: KeyTable.XK_Left, Up: KeyTable.XK_Up, Right: KeyTable.XK_Right, Down: KeyTable.XK_Down, Home: KeyTable.XK_Home, End: KeyTable.XK_End,
+  Page_Up: KeyTable.XK_Page_Up, Page_Down: KeyTable.XK_Page_Down, F5: KeyTable.XK_F5 };
+function key(sym) { if (live() && !viewOnly) rfb.sendKey(sym); }
+function combo(modSym, sym) { if (!live() || viewOnly) return; rfb.sendKey(modSym, null, true); rfb.sendKey(sym); rfb.sendKey(modSym, null, false); }
+function typeText(s) { for (const ch of s) { if (ch === '\n') key(KS.Return); else key(keysyms.lookup(ch.codePointAt(0))); } }
+document.querySelectorAll('[data-key]').forEach((b) => b.onclick = () => key(KS[b.dataset.key]));
+document.querySelectorAll('[data-ctrl]').forEach((b) => b.onclick = () => combo(KeyTable.XK_Control_L, keysyms.lookup(b.dataset.ctrl.charCodeAt(0))));
+document.querySelectorAll('[data-alt]').forEach((b) => b.onclick = () => combo(KeyTable.XK_Alt_L, KS[b.dataset.alt]));
+const open = (id) => { document.querySelectorAll('.sheet').forEach((s) => s.classList.toggle('open', s.id === id && !s.classList.contains('open'))); };
+document.querySelectorAll('.sClose').forEach((b) => b.onclick = () => document.querySelectorAll('.sheet').forEach((s) => s.classList.remove('open')));
+// Live keyboard (like Chrome Remote Desktop): the phone keyboard types straight into the agent’s focused field.
+const kb = $('kb');
+$('bType').onclick = () => { if (document.activeElement === kb) { kb.blur(); return; } kb.value = ''; kb.focus(); };
+kb.addEventListener('focus', () => $('bType').classList.add('on'));
+kb.addEventListener('blur', () => $('bType').classList.remove('on'));
+kb.addEventListener('beforeinput', (e) => {
+  e.preventDefault();
+  if (e.inputType === 'deleteContentBackward') key(KS.BackSpace);
+  else if (e.inputType === 'insertLineBreak' || e.inputType === 'insertParagraph') key(KS.Return);
+  else if (e.data) typeText(e.data);
+});
+kb.addEventListener('keydown', (e) => {                       // hardware keys and keyboards without beforeinput
+  const map = { Enter: 'Return', Backspace: 'BackSpace', Tab: 'Tab', Escape: 'Escape', ArrowLeft: 'Left', ArrowRight: 'Right', ArrowUp: 'Up', ArrowDown: 'Down' };
+  if (map[e.key]) { e.preventDefault(); key(KS[map[e.key]]); }
+});
+kb.addEventListener('input', () => { if (kb.value) { typeText(kb.value); kb.value = ''; } });   // fallback (no beforeinput)
+$('bLong').onclick = () => { open('typeSheet'); setTimeout(() => $('txt').focus(), 150); };
+$('bKeys').onclick = () => open('keySheet');
+$('sSend').onclick = () => { const v = $('txt').value; if (v) { typeText(v); $('txt').value = ''; toast('Typed'); } };
+$('cTo').onclick = async () => { try { const t = await navigator.clipboard.readText(); if (t && live()) { rfb.clipboardPasteFrom(t); toast('Placed on the agent’s clipboard. Press Ctrl+V'); } }
+  catch (_) { open('typeSheet'); toast('Paste the text here and press Type'); } };
+$('cFrom').onclick = async () => { if (!remoteClip) { toast('Copy something on the agent’s screen first (Ctrl+C)'); return; }
+  try { await navigator.clipboard.writeText(remoteClip); toast('Copy to my phone'); } catch (_) { toast('Could not copy'); } };
+$('bFull').onclick = () => { const el = document.documentElement;
+  if (!document.fullscreenElement && el.requestFullscreen) el.requestFullscreen().catch(() => toast('iPhone: Share → Add to Home Screen'));
+  else if (document.exitFullscreen) document.exitFullscreen(); };
+$('bRe').onclick = () => { retry = 0; connect(); };
+$('zoomTag').onclick = resetZoom;
+
+applyMode();
+/* Embedded in the workspace page: watch by default; the page's Take control / Hand back button flips this. */
+window.deskViewOnly = () => viewOnly;
+window.deskSetViewOnly = (v) => { viewOnly = !!v; if (rfb) rfb.viewOnly = viewOnly; document.documentElement.classList.toggle('watch', viewOnly); };
+if (EMBED) { viewOnly = true; document.documentElement.classList.add('watch'); }
+connect();
+</script>
+</body>
+</html>

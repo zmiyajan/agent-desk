@@ -1,0 +1,56 @@
+{
+	auto_https off
+	admin off
+}
+
+:8080 {
+	header -Server
+
+	# Sign-in pages are the only thing reachable without a session.
+	handle /auth/* {
+		reverse_proxy auth:9000
+	}
+
+	handle {
+		forward_auth auth:9000 {
+			uri /auth/check
+			@signedout status 401
+			handle_response @signedout {
+				redir * /auth/login?rd={http.request.orig_uri.path} 302
+			}
+		}
+
+		# The agent's screen (noVNC over WebSocket) and the viewer page
+		handle /screen/* {
+			@viewer path /screen/screen.html
+			header @viewer Cache-Control "no-cache"   # so an upgraded viewer is picked up without a hard reload
+			uri strip_prefix /screen
+			reverse_proxy desktop:6080
+		}
+
+		# Web terminal: a shell inside the desktop container
+		handle /term/* {
+			reverse_proxy desktop:7681
+		}
+
+		# File API only; File Browser's own pages are not exposed
+		@filesui {
+			path /files/*
+			not path /files/api/*
+		}
+		redir @filesui /#filesystem 302
+		handle /files/* {
+			reverse_proxy files:8080
+		}
+
+		handle /stats/* {
+			reverse_proxy stats:8028
+		}
+
+		handle {
+			root * /srv/web
+			header Cache-Control "no-cache"
+			file_server
+		}
+	}
+}

@@ -1,0 +1,13 @@
+# Example: run your agent next to the desk.
+#   docker compose -f compose.yml -f examples/compose.agent.yml up -d
+# The agent container joins the desk's network, so it can reach the browser at http://desktop:9223,
+# and it shares the workspace folder.
+services:
+  agent:
+    image: python:3.13-slim            # replace with your agent's image
+    command: ["python", "/examples/agent_cdp.py"]
+    volumes:
+      - ./examples:/examples:ro
+      - workspace:/workspace
+    networks: [desk]
+    depends_on: [desktop]
