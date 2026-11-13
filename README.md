@@ -26,7 +26,7 @@ The page is behind a password sign-in and listens on `127.0.0.1` by default.
 Requires Docker with Compose.
 
 ```sh
-git clone <this repo> agent-desk && cd agent-desk
+git clone https://github.com/zmiyajan/agent-desk.git && cd agent-desk
 cp .env.example .env
 # edit .env and set DESK_PASSWORD (at least 12 characters)
 docker compose up -d --build
